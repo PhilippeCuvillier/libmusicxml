@@ -67,6 +67,7 @@ void lexend() {
 
 #define getc	wgetc
 #define fread	wfread
+#define register		// to get rid of the -Wdeprecated-register
 
 %}
 
@@ -84,6 +85,7 @@ anything	[^-]
 
 %option yylineno
 %option never-interactive
+%option nounput
 
 %S COMMENTSECT DATASECT XMLSECT PISECT DOCTYPESECT
 

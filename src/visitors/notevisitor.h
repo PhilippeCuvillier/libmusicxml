@@ -15,11 +15,13 @@
 
 #include <ostream>
 #include <string>
+#include <sstream>
 #include "conversions.h"
 #include "rational.h"
 #include "typedefs.h"
 #include "visitor.h"
 #include "xml.h"
+
 
 namespace MusicXML2 
 {   
@@ -32,7 +34,7 @@ namespace MusicXML2
 /*!
 \brief A note visitor.
 */
-class EXP notevisitor : 
+class EXP notevisitor :
 	public visitor<S_accent>,
 	public visitor<S_alter>,
 	public visitor<S_beam>,
@@ -62,7 +64,17 @@ class EXP notevisitor :
 	public visitor<S_time_modification>,
 	public visitor<S_type>,
 	public visitor<S_unpitched>,
-	public visitor<S_voice>
+	public visitor<S_voice>,
+    public visitor<S_lyric>,
+    public visitor<S_turn>,
+    public visitor<S_inverted_turn>,
+    public visitor<S_trill_mark>,
+    public visitor<S_wavy_line>,
+    public visitor<S_inverted_mordent>,
+    public visitor<S_mordent>,
+    public visitor<S_accidental_mark>,
+    public visitor<S_notehead>,
+    public visitor<S_tuplet>
 {
  public:
 		S_stem			fStem;
@@ -71,6 +83,15 @@ class EXP notevisitor :
 		S_staccato		fStaccato;
 		S_tenuto		fTenuto;
 		S_breath_mark	fBreathMark;
+        S_trill_mark		fTrill;
+        S_inverted_mordent		fInvertedMordent;
+        S_mordent		fMordent;
+        S_turn		fTurn;
+        S_inverted_turn fInvertedTurn;
+        S_accidental_mark fAccidentalMark;
+        S_notehead fNotehead;
+        std::string fGraphicType;
+        std::string fAccidental;
 
 		enum	  { C, D, E, F, G, A, B, last=B, diatonicSteps=last };
 		enum type { kUndefinedType, kPitched, kUnpitched, kRest };
@@ -88,6 +109,9 @@ class EXP notevisitor :
         int		getTie() const		{ return fTie; }
         int		getStaff() const	{ return fStaff; }
         int		getVoice() const	{ return fVoice; }
+        S_note	getSnote() const	{ return fThisSNote; }
+        float getRestFormatDy(string fCurClef) const;
+        std::string getNoteheadType() const;
 
 		/*!
 		\brief Compute the note MIDI pitch.
@@ -116,20 +140,30 @@ class EXP notevisitor :
 
 		virtual const std::vector<S_tied>&	getTied() const	{ return fTied; }
 		virtual const std::vector<S_slur>&	getSlur() const	{ return fSlur; }
-		virtual const std::vector<S_beam>&	getBeam() const	{ return fBeam; }
+        virtual const std::vector<S_beam>&	getBeam() const	{ return fBeam; }
+        virtual const std::vector<S_wavy_line>&	getWavylines() const	{ return fWaveLine; }
+		virtual const std::vector<S_tuplet>&	getTuplet() const	{ return fTuplet; }
+        virtual const std::vector<S_lyric>&	getLyric() const	{ return fLyric; }
+        virtual const std::string&  getSyllabic() const		{ return fSyllabic; }
+        virtual const std::string&  getLyricText() const		{ return fLyricText; }
+        virtual const float&  getLyricDy() const		{ return fLyricsDy; }
 
-        static int			step2i(const std::string& step); 
+        static int			step2i(const std::string& step);
 		static std::string	i2step(int i);
+    
+    int x_default;  // XML's x_default value which is the distance from beginning of measure
 
     protected:
 		bool fInNote;
         void reset();   
 
 		virtual void visitEnd  ( S_note& elt );
+        //virtual void visitEnd  ( S_rest& elt );
 
 		virtual void visitStart( S_accent& elt)			{ fAccent = elt; }
 		virtual void visitStart( S_alter& elt )			{ if (fInNote) fAlter = (float)(*elt); }
-		virtual void visitStart( S_beam& elt )			{ fBeam.push_back (elt); }
+        virtual void visitStart( S_beam& elt )			{ fBeam.push_back (elt); }
+		virtual void visitStart( S_tuplet& elt )		{ fTuplet.push_back (elt); }
 		virtual void visitStart( S_breath_mark& elt)	{ fBreathMark = elt; }
 		virtual void visitStart( S_chord& elt )			{ fChord = true; }
 		virtual void visitStart( S_cue& elt )			{ fCue = true; }
@@ -143,7 +177,7 @@ class EXP notevisitor :
 		virtual void visitStart( S_note& elt );
 		virtual void visitStart( S_octave& elt )		{ if (fInNote) fOctave = (int)(*elt); }
 		virtual void visitStart( S_pitch& elt )			{ fType = kPitched; }
-		virtual void visitStart( S_rest& elt )			{ fType = kRest; }
+        virtual void visitStart( S_rest& elt )          { fType = kRest; }
 		virtual void visitStart( S_slur& elt )			{ fSlur.push_back (elt); }
 		virtual void visitStart( S_staccato& elt)		{ fStaccato = elt; }
 		virtual void visitStart( S_staff& elt)			{ fStaff = int(*elt); }
@@ -154,17 +188,32 @@ class EXP notevisitor :
 		virtual void visitStart( S_tie& elt );
 		virtual void visitStart( S_tied& elt )			{ fTied.push_back (elt); }
 		virtual void visitStart( S_time_modification& elt );
-		virtual void visitStart( S_type& elt )			{ if (fInNote) fGraphicType = elt->getValue(); }
+		virtual void visitStart( S_type& elt )
+            {
+                if (fInNote)
+                    fGraphicType = elt->getValue();
+                if (elt->getAttributeValue("size")=="cue")
+                    fCue = true;
+            }
 		virtual void visitStart( S_unpitched& elt )		{ if (fInNote) fType = kUnpitched; }
 		virtual void visitStart( S_voice& elt )			{ fVoice = int(*elt); }
-
+        virtual void visitStart( S_lyric& elt );
+        virtual void visitStart( S_turn& elt )    { fTurn = elt; }
+        virtual void visitStart( S_trill_mark& elt )    { fTrill = elt; }
+        virtual void visitStart( S_wavy_line& elt )    { fWaveLine.push_back(elt); }
+        virtual void visitStart( S_accidental_mark& elt )    { fAccidentalMark = elt; }
+        virtual void visitStart( S_inverted_mordent& elt )    { fInvertedMordent = elt; }
+        virtual void visitStart( S_inverted_turn& elt )    { fInvertedTurn = elt; }
+        virtual void visitStart( S_mordent& elt )    { fMordent = elt; }
+        virtual void visitStart( S_notehead& elt )    { fNotehead = elt; }
+    
 	private:
 		bool	fGrace, fCue, fChord, fFermata;
 		type	fType;
 		int		fDots;
 		StartStop::type	fTie;
 		long	fDuration, fDynamics;
-		std::string	fStep, fGraphicType;
+		std::string	fStep;
 		float	fAlter;
 		int		fOctave;
 		int		fStaff, fVoice;
@@ -173,7 +222,16 @@ class EXP notevisitor :
 
 		std::vector<S_tied>	fTied;
 		std::vector<S_slur>	fSlur;
-		std::vector<S_beam>	fBeam;
+        std::vector<S_beam>	fBeam;
+        std::vector<S_tuplet>	fTuplet;
+        std::vector<S_wavy_line>	fWaveLine;
+
+		std::vector<S_lyric>	fLyric;
+        std::string fSyllabic;
+        std::string fLyricText;
+        float fLyricsDy;
+    
+    S_note fThisSNote;
 };
 
 EXP std::ostream& operator<< (std::ostream& os, const notevisitor& elt);

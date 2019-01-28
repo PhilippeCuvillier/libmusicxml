@@ -45,14 +45,22 @@ void notevisitor::reset ()
 	fDynamics	= kUndefinedDynamics;
 	fStaff		= kUndefinedStaff;
 	fVoice		= kUndefinedVoice;		
-	fAlter = 0.f;
-	fOctave = 0;
-	fStem = 0;
-	fAccent = 0;
-	fStrongAccent = 0;
-	fStaccato = 0;
-	fTenuto = 0;
-	fBreathMark = 0;
+	fAlter		= 0.f;
+	fOctave		= 0;
+	fStem		= (void*)0;
+	fAccent		= (void*)0;
+	fStrongAccent = (void*)0;
+	fStaccato	= (void*)0;
+    fTenuto		= (void*)0;
+    fTrill		= (void*)0;
+	fTurn		= (void*)0;
+    fInvertedTurn = (void*)0;
+    fAccidentalMark = (void*)0;
+    fMordent	= (void*)0;
+    fNotehead	= (void*)0;
+    fInvertedMordent = (void*)0;
+	fBreathMark = (void*)0;
+    fThisSNote = (void*)0;
 	fTimeModification.set(1,1);
 #ifdef VC6
 	fStep = "";
@@ -64,6 +72,14 @@ void notevisitor::reset ()
 	fTied.clear();
 	fSlur.clear();
 	fBeam.clear();
+    fTuplet.clear();
+    fWaveLine.clear();
+    
+    fLyric.clear();
+    fSyllabic = "";
+    fLyricText="";
+    fGraphicType="";
+    fAccidental = "";
 }
 
 //________________________________________________________________________
@@ -162,21 +178,284 @@ void notevisitor::print (ostream& out) const
 		if (getDynamics() >= 0) out << "dynamics " << getDynamics();
 }
 
+    
+    //________________________________________________________________________
+    void notevisitor::visitStart ( S_lyric& elt )
+    {
+        fLyric.push_back (elt);
+        // get attributes
+        float posy = elt->getAttributeFloatValue("default-y", 0) + elt->getAttributeFloatValue("relative-y", 0);
+        fLyricsDy = (posy / 10) * 2;   // convert to half spaces
+        fLyricsDy += 8;		  // anchor point convertion (defaults to upper line in xml)
+        
+        /// Get content information:
+        fSyllabic = elt->getValue(k_syllabic);
+        fLyricText = elt->getValue(k_text);
+    }
+    
 //________________________________________________________________________
 void notevisitor::visitStart ( S_note& elt )
 {
 	fInNote = true;
 	reset();
 	fDynamics = elt->getAttributeLongValue("dynamics", kUndefinedDynamics);
+    fAccidental = elt->getValue(k_accidental);
+    fThisSNote = elt;
+    x_default = elt->getAttributeIntValue("default-x", -1);
 }
 
 //________________________________________________________________________
 void notevisitor::visitEnd ( S_note& elt )
 {
 #ifdef PRINTNOTE
-	cout << *this << endl;
+	cerr << *this << endl;
 #endif
 }
+    
+    //________________________________________________________________________
+    std::string notevisitor::getNoteheadType () const
+    {
+        if (fNotehead)
+        {
+            std::stringstream noteHeadGuidoType;
+            
+            if (fNotehead->getAttributeValue("parantheses")=="yes")
+            {
+                noteHeadGuidoType << "(";
+            }
+            
+            std::string noteHeadXML = fNotehead->getValue();
+            if (noteHeadXML == "diamond")
+                noteHeadGuidoType << "diamond";
+            else if (noteHeadXML == "inverted triangle")
+                noteHeadGuidoType << "reversedTriangle";
+            else if (noteHeadXML == "x")
+                noteHeadGuidoType << "x";
+            else if (noteHeadXML == "triangle")
+                noteHeadGuidoType << "triangle";
+            else if (noteHeadXML == "square")
+                noteHeadGuidoType << "square";
+            else if (noteHeadXML == "square")
+                noteHeadGuidoType << "square";
+            else
+                noteHeadGuidoType << "";
+            
+            if (fNotehead->getAttributeValue("parantheses")=="yes")
+            {
+                noteHeadGuidoType << ")";
+            }
+            
+            return noteHeadGuidoType.str();
+        }else
+            return "";
+    }
+    
+    //________________________________________________________________________
+    float notevisitor::getRestFormatDy ( string fCurClef ) const
+    {
+        float restFormatDy = 0.0;
+        //string display_step = elt->getValue(k_display_step);
+        //int display_octave = elt->getIntValue(k_display_octave, 0.0);
+        string display_step = fStep;
+        int display_octave = fOctave;
+        
+        // Now convert to half-space! We'd need the Current Clef info for this!
+        if (display_octave)
+        {
+            // dy 0 is B4, dy=-6 for C4, -4 for E4, -2 for G4 ;
+            // D5-> +2, F5 -> +4
+            switch (display_step[0]) {
+                case 'A':
+                    switch (display_octave) {
+                        case 4:
+                            restFormatDy = -1.0;
+                            break;
+                        case 5:
+                            restFormatDy = 6.0;
+                            break;
+                            
+                        case 3:
+                            if (fCurClef == "G")
+                                restFormatDy = -8.0;
+                            else if (fCurClef == "F")
+                                restFormatDy = 4.0;
+                            break;
+                        
+                        // treating F clef directly!
+                        case 2:
+                            restFormatDy = -3.0;
+                            break;
+                        case 1:
+                            restFormatDy = -10.0;
+                            break;
+                            
+                        default:
+                            restFormatDy = 0.0;
+                            break;
+                    }
+                    break;
+                    
+                case 'B':
+                    switch (display_octave) {
+                        case 4:
+                            restFormatDy = 0.0;
+                            break;
+                        case 5:
+                            restFormatDy = 7.0;
+                            break;
+                            
+                        case 3:
+                            if (fCurClef == "G")
+                                restFormatDy = -7.0;
+                            else if (fCurClef == "F")
+                                restFormatDy = 5.0;
+                            break;
+                        // F clef:
+                        case 2:
+                            restFormatDy = -2.0;
+                            break;
+                        case 1:
+                            restFormatDy = -9.0;
+                            break;
+                            
+                        default:
+                            restFormatDy = 0.0;
+                            break;
+                    }
+                    break;
+                case 'C':
+                    switch (display_octave) {
+                        case 4:
+                            if (fCurClef == "G")
+                                restFormatDy = -6.0;
+                            else if (fCurClef == "F")
+                                restFormatDy = 6.0;
+                            break;
+                        case 5:
+                            restFormatDy = 1.0;
+                            break;
+                        case 6:
+                            restFormatDy = 8.0;
+                            break;
+                        // F clef:
+                        case 3:
+                            restFormatDy = -1.0;
+                            break;
+                        case 2:
+                            restFormatDy = -8.0;
+                            break;
+                        default:
+                            restFormatDy = 0.0;
+                            break;
+                    }
+                    break;
+                    
+                case 'D':
+                    switch (display_octave) {
+                        case 4:
+                            if (fCurClef == "G")
+                                restFormatDy = -5.0;
+                            else if (fCurClef == "F")
+                                restFormatDy = 7.0;
+                            break;
+                        case 5:
+                            restFormatDy = 2.0;
+                            break;
+                        // F clef:
+                        case 3:
+                            restFormatDy = 0.0;
+                            break;
+                        case 2:
+                            restFormatDy = -7.0;
+                            break;
+                            
+                        default:
+                            restFormatDy = 0.0;
+                            break;
+                    }
+                    break;
+                case 'E':
+                    switch (display_octave) {
+                        case 4:
+                            if (fCurClef == "G")
+                                restFormatDy = -4.0;
+                            else if (fCurClef == "F")
+                                restFormatDy = 8.0;
+                            break;
+                        case 5:
+                            restFormatDy = 3.0;
+                            break;
+                        case 6:
+                            restFormatDy = 10.0;
+                            break;
+                        // F clef:
+                        case 3:
+                            restFormatDy = 1.0;
+                            break;
+                        case 2:
+                            restFormatDy = -6.0;
+                            break;
+                        default:
+                            restFormatDy = 0.0;
+                            break;
+                    }
+                    break;
+                case 'F':
+                    switch (display_octave) {
+                        case 4:
+                            if (fCurClef == "G")
+                                restFormatDy = -3.0;
+                            else if (fCurClef == "F")
+                                restFormatDy = 9.0;
+                            break;
+                        case 5:
+                            restFormatDy = 4.0;
+                            break;
+                        // F clef:
+                        case 3:
+                            restFormatDy = 2.0;
+                            break;
+                        case 2:
+                            restFormatDy = -5.0;
+                            break;
+                            
+                        default:
+                            restFormatDy = 0.0;
+                            break;
+                    }
+                    break;
+                case 'G':
+                    switch (display_octave) {
+                        // G clef:
+                        case 4:
+                            restFormatDy = -2.0;
+                            break;
+                        case 5:
+                            restFormatDy = 5.0;
+                            break;
+                        // F clef:
+                        case 3:
+                            restFormatDy = 3.0;
+                            break;
+                        case 2:
+                            restFormatDy = -4.0;
+                            break;
+                        default:
+                            restFormatDy = 0.0;
+                            break;
+                    }
+                    break;
+                    
+                default:
+                    break;
+            }
+            
+            // Got it reversed for F clef
+            restFormatDy = -1.0 * restFormatDy;
+        }
+        
+        return restFormatDy;
+    }
 
 }
 

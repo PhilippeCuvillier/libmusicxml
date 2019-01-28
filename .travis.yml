@@ -1,0 +1,21 @@
+os: linux
+dist: xenial
+language: cpp
+compiler: clang
+
+before_install:
+  - sudo apt-get -qq update
+
+branches:
+  except:
+  - lilypond
+
+branches:
+  only:
+  - dev
+  - master
+
+script: 
+   - make -C build
+   - sudo make -C build/linux install
+   - make -C validation
